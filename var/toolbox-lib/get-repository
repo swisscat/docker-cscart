@@ -1,0 +1,420 @@
+#!/bin/bash
+
+##
+# Help message
+##
+get_repository_help()
+{
+	echo "Usage: $SCRIPT_NAME get <repository> [--skip-code] [--database-dump <file>] [--custom-host <host>] [--custom-folder <folder>] [--custom-ssh-config <config>] [--commit <commit_id>]
+
+Clone, build an application.
+If no database dump is specified, it will get a dump from staging server.
+
+Example:
+	$SCRIPT_NAME get ecom-sp
+	$SCRIPT_NAME get ecom-multistore---pt --skip-code
+	$SCRIPT_NAME get ecom-multistore --ssh-config dcsdemo --folder /var/www/vhosts/mywebsite.com/dcsdemo.mywebsite.com/httpdocs
+	$SCRIPT_NAME get ecom-multistore---ro --skip-code --host website.ro --port 22
+	$SCRIPT_NAME get ecom-jp --database-dump ngpjpprod.sql
+	$SCRIPT_NAME get ecom-jp --commit c833b43"
+}
+
+##
+# Get a repository.
+##
+get_repository()
+{
+	local APP_ALIAS=$DEFAULT_APP_REPOSITORY
+
+	while test $# != 0
+	do
+		case "$1" in
+		-d|--database-dump)
+			shift
+			local DATABASE_DUMP=$1
+			;;
+		--skip-code)
+			local SKIP_GET_CODE=y
+			;;
+		--custom-ssh-config|--ssh-config)
+			shift
+			local INPUT_SSH_CONFIG=$1
+			;;
+		--custom-host|--host)
+			shift
+			local INPUT_HOST=$1
+			;;
+		--custom-folder|--folder)
+			shift
+			local INPUT_FOLDER=$1
+			;;
+		--db-port|--port)
+			shift
+			local INPUT_PORT=$1
+			;;
+		-n|--no-database)
+			local NO_DATABASE=y
+			;;
+		--no-db-update)
+			local NO_DB_UPDATE_FLAG="--no-db-update"
+			;;
+		-h|--help|h|help)
+			get_repository_help
+			exit
+			;;
+		-c|--commit)
+			shift
+			local INPUT_CHECKOUT=$1
+			;;
+        --user)
+            shift
+            local INPUT_USER=$1
+            ;;
+
+		*)
+			APP_ALIAS=${1:-$APP_ALIAS}
+			;;
+		esac
+		shift
+	done
+
+	# Prefer JSON if it exists
+	if test -f "$APP_DIRECTORY/env-aliases/$APP_ALIAS.json" ; then
+		local JSON_CONFIG=$(cat "$APP_DIRECTORY/env-aliases/$APP_ALIAS.json")
+
+		local APP_FOLDER=$(echo $JSON_CONFIG | json_val folder)
+		local APP_HOST=$(echo $JSON_CONFIG | json_val host)
+		local APP_PORT=$(echo $JSON_CONFIG | json_val port)
+		local APP_SSH_CONFIG=$(echo $JSON_CONFIG | json_val ssh-config)
+		local APP_REPOSITORY=$(echo $JSON_CONFIG | json_val repository)
+		local APP_USER=$(echo $JSON_CONFIG | json_val user)
+		local APP_SSH_KEY=$(echo $JSON_CONFIG | json_val ssh-key)
+		local APP_CHECKOUT=$(echo $JSON_CONFIG | json_val checkout)
+	# Default configuration for smooth transition
+	elif test -f "$APP_DIRECTORY/env-aliases.default/$APP_ALIAS.json" ; then
+		local JSON_CONFIG=$(cat "$APP_DIRECTORY/env-aliases.default/$APP_ALIAS.json")
+
+		local APP_FOLDER=$(echo $JSON_CONFIG | json_val folder)
+		local APP_HOST=$(echo $JSON_CONFIG | json_val host)
+		local APP_PORT=$(echo $JSON_CONFIG | json_val port)
+		local APP_SSH_CONFIG=$(echo $JSON_CONFIG | json_val ssh-config)
+		local APP_REPOSITORY=$(echo $JSON_CONFIG | json_val repository)
+		local APP_USER=$(echo $JSON_CONFIG | json_val user)
+		local APP_SSH_KEY=$(echo $JSON_CONFIG | json_val ssh-key)
+		local APP_CHECKOUT=$(echo $JSON_CONFIG | json_val checkout)
+	elif test -f "$APP_DIRECTORY/env-aliases/$APP_ALIAS" ; then
+		local PARAM_FOLDER=$INPUT_FOLDER
+		local PARAM_PORT=$DB_PORT
+		local PARAM_HOST=$INPUT_HOST
+
+		. "$APP_DIRECTORY/env-aliases/$APP_ALIAS"
+
+		local INPUT_FOLDER=${PARAM_FOLDER:-$INPUT_FOLDER}
+		local INPUT_HOST=${PARAM_HOST:-$INPUT_HOST}
+		local APP_PORT=${PARAM_PORT:-$DB_PORT}
+	else
+		echo_error "File '$APP_DIRECTORY/env-aliases/$APP_ALIAS' does not exist."
+		exit 1
+	fi
+
+	local APP_FOLDER=${INPUT_FOLDER:-$APP_FOLDER}
+	local APP_HOST=${INPUT_HOST:-$APP_HOST}
+	local APP_PORT=${INPUT_PORT:-$APP_PORT}
+	local APP_SSH_CONFIG=${INPUT_SSH_CONFIG:-$APP_SSH_CONFIG}
+	local APP_REPOSITORY=${INPUT_REPOSITORY:-$APP_REPOSITORY}
+	local APP_USER=${INPUT_USER:-$APP_USER}
+	local APP_SSH_KEY=${INPUT_SSH_KEY:-$APP_SSH_KEY}
+	local APP_CHECKOUT=${INPUT_CHECKOUT:-$APP_CHECKOUT}
+
+	if test -n "$APP_SSH_KEY" ; then
+		APP_SSH_KEY="-i $APP_SSH_KEY"
+	fi
+
+	APP_USER=${APP_USER:-${BI_SERVER_USER:-sysdevc}}
+	APP_PORT=${APP_PORT:-22}
+	APP_REPOSITORY=${APP_REPOSITORY:-'ecom-multistore-core'}
+	
+	# Define the connexion commands depending on the input
+	if test -z $APP_SSH_CONFIG ; then
+		local APP_SSH_COMMAND="ssh -t -t -p $APP_PORT $APP_SSH_KEY $APP_USER@$APP_HOST"
+		local APP_SCP_COMMAND="scp -P $APP_PORT $APP_SSH_KEY $APP_USER@$APP_HOST"
+	else
+		local APP_SSH_COMMAND="ssh -t -t $APP_SSH_CONFIG"
+		local APP_SCP_COMMAND="scp $APP_SSH_CONFIG"
+	fi
+
+	# If we don't skip the code, then init the clone process.
+	if test -z $SKIP_GET_CODE; then
+		# Detect remote validity
+
+		if ! run git ls-remote ssh://git@stash.com:7999/website/$APP_REPOSITORY.git; then
+			echo_error "Application '$APP_REPOSITORY' is not valid. Did you make a typo?
+	Run '$SCRIPT_NAME --debug get $APP_REPOSITORY' for more details."
+			exit 1
+		fi
+
+		# Check if application already exists
+		if [ -d "$APP_DIRECTORY/app-data/$APP_ALIAS" ]; then
+			echo "Application '$APP_ALIAS' is already in place."
+			exit 1
+		fi
+
+		# Spain is an isolated market
+		if [ "$APP_REPOSITORY" != "ecom-sp" ]; then
+			# Get the first existing folder
+			local EXISTING_FOLDER=`/bin/ls $APP_DIRECTORY/app-data | grep ecom- | sed -n 1p`
+
+			# If a folder alread exists, use it and
+			if [ "$EXISTING_FOLDER" != "" ] && [ -d "$APP_DIRECTORY/app-data/$EXISTING_FOLDER/.git" ]; then
+				echo "Copying from '$EXISTING_FOLDER' to gain time on the source download"
+				run cp -r $APP_DIRECTORY/app-data/$EXISTING_FOLDER $APP_DIRECTORY/app-data/$APP_ALIAS || true
+				cd $APP_DIRECTORY/app-data/$APP_ALIAS
+				local CURRENT_ORIGIN="origin-"${EXISTING_FOLDER:5}
+
+				# If remote does not exist, create it
+				if test -z "$(git remote show origin | grep 'Fetch URL: ssh://git@stash..com:7999/website/$APP_REPOSITORY.git')" ; then
+
+					if test -n "$(git remote show origin | grep 'Fetch URL: ssh://git@stash.com:7999/website/')" ; then
+						git remote rename origin old-origin
+						echo "Remote 'origin' has been renamed to 'old-origin'"
+					fi
+
+					if test -z "$(git remote show | grep $CURRENT_ORIGIN)" ; then
+
+						git remote rename origin $CURRENT_ORIGIN
+						echo "Remote 'origin' has been renamed to '$CURRENT_ORIGIN'"
+					fi
+
+					git remote add origin ssh://git@stash.com:7999/website/$APP_REPOSITORY.git
+				fi
+
+				git fetch origin
+				# Making sure upstream is correct
+				git branch -u origin/production production
+
+				git reset --hard HEAD && git checkout production && git reset --hard origin/production
+			else
+				cd "$APP_DIRECTORY/app-data"
+				git clone ssh://git@stash.com:7999/website/$APP_REPOSITORY.git $APP_ALIAS
+			fi
+		else
+			cd "$APP_DIRECTORY/app-data"
+			git clone ssh://git@stash.com:7999/website/$APP_REPOSITORY.git $APP_ALIAS
+		fi
+	fi
+
+	if test -n "$APP_CHECKOUT" ; then
+		cd $APP_DIRECTORY/app-data/$APP_ALIAS
+		git fetch origin
+		git checkout origin/$APP_CHECKOUT
+	fi
+
+	# Fill-in the deprecated npg_project configuration
+	# This should not be relevant for the project, but still is.
+	case $APP_REPOSITORY in
+		ecom-jp)
+			local NGP_PROJECT="jp"
+			;;
+
+		*)
+			local NGP_PROJECT="multistore"
+			;;
+	esac
+
+	cat <<EOF >$APP_DIRECTORY/app-data/$APP_ALIAS/local_conf.php
+<?php
+
+// Database connexion
+\$config['db_host'] = 'db';
+\$config['db_name'] = '$APP_ALIAS';
+\$config['db_user'] = 'root';
+\$config['db_password'] = 'root';
+
+// Host and directory where software is installed on no-secure server
+\$config['http_host'] = '$APP_ALIAS.dev';
+\$config['http_path'] = '';
+
+// Host and directory where software is installed on secure server
+\$config['https_host'] = '$APP_ALIAS.dev';
+\$config['https_path'] = '';
+
+\$config['ngp_project'] = '$NGP_PROJECT';
+
+ini_set('display_errors', 1);
+EOF
+
+	cat <<EOF >$APP_DIRECTORY/app-data/$APP_ALIAS/phinx.yml
+paths:
+    migrations: %%PHINX_CONFIG_DIR%%/migrations
+
+environments:
+    default_migration_table: phinxlog
+    default_database: development
+    development:
+        adapter: mysql
+        host: db
+        name: '$APP_ALIAS'
+        user: root
+        pass: root
+        port: 3306
+        charset: utf8
+EOF
+
+	build_containers
+
+	mysql_query "CREATE DATABASE IF NOT EXISTS \`$APP_ALIAS\`;"
+
+	if test -n "$DATABASE_DUMP" ; then
+		echo "Importing database dump '$DATABASE_DUMP'..."
+		docker exec -i $MYSQL_CONTAINER mysql -u root -proot < $DATABASE_DUMP
+	elif test -z $NO_DATABASE ; then
+
+		if test -z $APP_FOLDER ; then
+			echo "Please specify an application folder (for example --folder /var/www/vhosts/staging.ecom.salesconquest.com/httpdocs)"
+			exit 1
+		fi
+
+		printf "Connecting to server...                "
+		# Test Connectivity to the domain (if it's not a SSH config)
+		if ! run $APP_SSH_COMMAND -q exit ; then
+			echo_error "Cannot connect to '${APP_SSH_CONFIG:-$APP_HOST:$APP_PORT}'"
+			exit 1
+		fi
+
+		local DUMP_TIMESTAMP=`date +'%Y%m%d%H%M%S'`
+		local DB_DUMP_NAME="$APP_REPOSITORY-$DUMP_TIMESTAMP.sql"
+
+		printf "[ok]\nCreating dump...                       "
+
+		run $APP_SSH_COMMAND <<EOD
+test -f $APP_FOLDER/local_conf.php || exit 1
+mkdir -p dbbackup-standalone
+cd dbbackup-standalone
+# Parse php configurations
+PARSED_USER=\`cat $APP_FOLDER/local_conf.php | grep db_user | awk -F"'|'" '{print \$4}'\`
+PARSED_HOST=\`cat $APP_FOLDER/local_conf.php | grep db_host | awk -F"'|'" '{print \$4}'\`
+PARSED_PASS=\`cat $APP_FOLDER/local_conf.php | grep db_pass | awk -F"'|'" '{print \$4}'\`
+PARSED_DATA=\`cat $APP_FOLDER/local_conf.php | grep db_name | awk -F"'|'" '{print \$4}'\`
+
+test -z \$PARSED_USER && exit 2
+test -z \$PARSED_HOST && exit 3
+test -z \$PARSED_PASS && exit 4
+test -z \$PARSED_DATA && exit 5
+
+mysqldump --lock-tables=false -h \$PARSED_HOST -u \$PARSED_USER -p\$PARSED_PASS \$PARSED_DATA | gzip > $DB_DUMP_NAME.gz
+exit
+EOD
+	fi
+
+	case $? in
+		1)
+			echo_error "Application file 'local_conf' in folder '$APP_FOLDER' not found"
+			exit 1
+			;;
+
+		2)
+			echo_error "Could not determine 'db_user' in '$APP_FOLDER/local_conf.php'"
+			exit 1
+			;;
+
+		3)
+			echo_error "Could not determine 'db_host' in '$APP_FOLDER/local_conf.php'"
+			exit 1
+			;;
+
+		4)
+			echo_error "Could not determine 'db_pass' in '$APP_FOLDER/local_conf.php'"
+			exit 1
+			;;
+
+		5)
+			echo_error "Could not determine 'db_name' in '$APP_FOLDER/local_conf.php'"
+			exit 1
+			;;
+
+		6)
+			echo_error "Could not access MySQL server to perform the dump"
+			exit 1
+			;;
+
+		*)
+			;;
+	esac
+
+	printf "[ok]\nFetching database dump...              "
+
+	if ! run $APP_SCP_COMMAND:/home/$APP_USER/dbbackup-standalone/$DB_DUMP_NAME.gz . ; then
+		echo_error "An error occured. Please check the logs above, or follow the steps manually."
+		exit 1
+	fi
+
+	printf "[ok]\n"
+	echo "Importing database dump '$DB_DUMP_NAME.gz'"
+	mysql_query "DROP DATABASE IF EXISTS \`$APP_ALIAS\`; CREATE DATABASE \`$APP_ALIAS\`"
+	gunzip -c $DB_DUMP_NAME.gz | docker exec -i $MYSQL_CONTAINER mysql -u root -proot $APP_ALIAS
+
+	# Cleanup
+	printf "Cleaning up import data...             "
+	run $APP_SSH_COMMAND rm -f /home/$APP_USER/dbbackup-standalone/$DB_DUMP_NAME.gz
+	rm -f $DB_DUMP_NAME.gz
+	printf "[ok]\n"
+
+	# If we have advanced configuration, use it
+	if test -n "$JSON_CONFIG" ; then
+		local STORES=$(echo $JSON_CONFIG | json_val stores)
+
+		local STORE_KEYS=($(echo $STORES | json_simple_keys ))
+
+		for i in "${!STORE_KEYS[@]}" ; do
+			local COMPANY_ID=${STORE_KEYS[$i]}
+			local STORE_CONFIG=$(echo $STORES | json_val $COMPANY_ID)
+			local STOREFRONT=$(echo $STORE_CONFIG | json_val storefront)
+
+			if test -n "$STOREFRONT" ; then
+				# Update storefront URL
+				mysql_query "USE $APP_ALIAS; UPDATE cscart_companies SET storefront = '$STOREFRONT' WHERE company_id = $COMPANY_ID; UPDATE cscart_companies SET secure_storefront = '$STOREFRONT' WHERE company_id = $COMPANY_ID;"
+			fi
+
+			local MARKET_CODE=$(echo $STORE_CONFIG | json_val market-code)
+
+			if test -n "$MARKET_CODE" ; then
+				# Update storefront URL
+				mysql_query "USE $APP_ALIAS; UPDATE cscart_companies SET market_code = '$MARKET_CODE' WHERE company_id = $COMPANY_ID;"
+			fi
+		done
+	else
+		# Otherwise, use the basic rule to update the first storefront
+		mysql_query "USE $APP_ALIAS; UPDATE cscart_companies SET storefront = '$APP_ALIAS.dev' ORDER BY company_id LIMIT 1; UPDATE cscart_companies SET secure_storefront = '$APP_ALIAS.dev' ORDER BY company_id LIMIT 1;"
+	fi
+
+	# Run the build commands
+	echo "Building '$APP_ALIAS'..."
+	build_repository $NO_DB_UPDATE_FLAG $APP_ALIAS
+
+	local APP_COMMAND="/var/www/$APP_ALIAS/var/console schedule:run &"
+
+	if test -z "$(run_docker_app_command cat /var/apps-schedule-run | grep "$APP_COMMAND")"; then
+		echo "Adding crontab entry"
+
+		run_docker_app_command bash -c "echo '$APP_COMMAND' >> /var/apps-schedule-run"
+	fi
+
+	IP_ADDRESS=$(run_with_std docker-machine ip $DOCKER_MACHINE)
+	IP_ADDRESS=${IP_ADDRESS:-"127.0.0.1"}
+
+	CURRENT_IP_ADDRESS=$(ping $APP_ALIAS.dev -c 1 | sed -n '2p' | awk -F'bytes from ' '{print $2}' | awk -F':' '{print $1}')
+
+	if test -z $CURRENT_IP_ADDRESS ; then
+		echo "Warning: Could not reach $APP_ALIAS.dev."
+	elif test "$CURRENT_IP_ADDRESS" != "$IP_ADDRESS" ; then
+		echo "Warning: $APP_ALIAS.dev points to $CURRENT_IP_ADDRESS, while it should point to $IP_ADDRESS"
+	fi
+
+	echo "
+Browse the app at 'http://$APP_ALIAS.dev'
+
+You can further:
+ * (Optional) import the images from an environment
+ * Checkout the branch you need and run '$SCRIPT_NAME build' to re-compile the application
+"
+}

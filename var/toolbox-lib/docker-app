@@ -1,0 +1,103 @@
+#!/bin/bash
+
+build_repository()
+{
+	local APP_REPOSITORY=$DEFAULT_APP_REPOSITORY
+
+	while test $# != 0
+	do
+		case "$1" in
+		-v|--verbose)
+			VERBOSE_BUILD=y
+			;;
+		--no-db-update)
+			NO_DB_UPDATE=y
+			;;
+		*)
+			APP_REPOSITORY=${1:-$APP_REPOSITORY}
+			;;
+		esac
+		shift
+	done
+
+	if test -z $VERBOSE_BUILD ; then
+		VERBOSE_COMMAND="> /dev/null"
+	fi
+
+	echo "Cleaning cache"
+	run_docker_app_command rm -rf /var/www/$APP_REPOSITORY/var/cache
+	run_docker_app_command rm -rf /var/www/$APP_REPOSITORY/vendor
+	echo "Installing composer dependencies"
+	run_docker_app_command bash -c "composer install -o --working-dir /var/www/$APP_REPOSITORY $VERBOSE_COMMAND"
+	if test -z $NO_DB_UPDATE; then
+		echo "Migrating database"
+		run_docker_app_command bash -c "cd /var/www/$APP_REPOSITORY && vendor/bin/phinx migrate $VERBOSE_COMMAND"
+		echo "Running updater script"
+		run_docker_app_command bash -c "cd /var/www/$APP_REPOSITORY && php -f sd_updater.php $VERBOSE_COMMAND"
+		echo "Setting up store"
+		run_docker_app_command bash -c "cd /var/www/$APP_REPOSITORY && test -n \"\$(php var/console | grep store:setup)\" && php var/console store:setup"
+	fi
+}
+
+connect_app()
+{
+	local DOCKER_PATH=/var/www/${1:-$DEFAULT_APP_REPOSITORY}
+    docker exec --user 1000 -it $APP_CONTAINER bash -c "cd $DOCKER_PATH; export TERM=xterm-256color; bash"
+}
+
+log_app()
+{
+	run_docker_app_command tail -f /var/log/nginx/app_error.log $@
+}
+
+mysql_query ()
+{
+	run docker exec -i $MYSQL_CONTAINER mysql -u root -proot -e "$1"
+}
+
+run_tests_help()
+{
+	echo "Usage: $SCRIPT_NAME test <repository>"
+}
+
+run_tests()
+{
+	if test $# = 0 ; then
+		local APP_REPOSITORY=ecom-multistore-core
+	fi
+
+	while test $# != 0
+	do
+		case "$1" in
+		-h|--help|h|help)
+			run_tests_help
+			exit
+			;;
+		*)
+			APP_REPOSITORY=${APP_REPOSITORY:-$1}
+			shift
+			;;
+		esac
+		shift
+	done
+
+	echo "Testing application '$APP_REPOSITORY'..."
+	docker exec -i $APP_CONTAINER bash -c "cd /var/www/$APP_REPOSITORY && phpunit"
+}
+
+show_hosts()
+{
+	IP_ADDRESS=$(run_with_std docker-machine ip $DOCKER_MACHINE)
+	IP_ADDRESS=${IP_ADDRESS:-"127.0.0.1"}
+	cd $APP_DIRECTORY"/app-data"
+	HOSTS=`ls -d */ | cut -f1 -d'/' | awk '{print $0".dev"}'`
+	printf "If you are not using a DNS tool, add the following line
+
+$IP_ADDRESS "
+	echo $HOSTS ecom-core.dev ecom-jp.dev ecom-it.dev ecom-sp.dev ecom-multistore-core.dev ecom-multistore---pt.dev ecom-multistore-core---ru.dev ecom-multistore-core---ro.dev ecom-multistore-core---ua.dev ecom-multistore-core---it.dev ecom-multistore-core---il.dev
+	echo "
+ * On Mac OSX, /etc/hosts
+ * On Windows, C:/Windows/System32/drivers/etc/hosts
+
+See https://stash.com/projects/PMI_IQOS/repos/dcs-docker for more information."
+}

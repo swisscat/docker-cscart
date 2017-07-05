@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# Ensure that docker commands are available
+connect_docker_daemon()
+{
+    local docker=$(echo $DOCKER_CSCART_CONFIG | json_val docker)
+    local dockerDriver=$(echo $docker | json_val driver)
+
+    case $dockerDriver in
+        native)
+            ;;
+        machine)
+            local dockerMachine=$(echo $docker | json_val machine)
+            dockerMachine=${dockerMachine:-'default'}
+            if test -z $(docker-machine ls -q | grep $dockerMachine) ; then
+                errcho "No docker-machine found named `$dockerMachine`."
+                exit 1
+            elif test -z $(docker-machine status $dockerMachine | grep "Running") ; then
+                echo "Starting docker-machine $dockerMachine..."
+                run docker-machine start $dockerMachine
+            fi
+
+            if ! run eval "$(docker-machine env $dockerMachine)" ; then
+                errcho "I have an issue connecting to your docker machine."
+                exit 1
+            fi
+            ;;
+
+        *)
+            errcho "Unknown docker driver `$dockerDriver`."
+            exit 1
+    esac
+}
+
+docker_compose()
+{
+    connect_docker_daemon
+    docker-compose -f $CSCART_DIRECTORY/docker-compose.yml "$@"
+}
+
+build_containers()
+{
+	cd $APP_DIRECTORY
+	printf "Updating containers (can take time)... "
+	run docker-compose build $ERROR_BUILD_OUTPUT
+	run docker-compose up -d $ERROR_BUILD_OUTPUT
+	printf "[ok]\n"
+}
+
+do_reload()
+{
+	cd $APP_DIRECTORY
+	docker-compose restart
+}
+
+run_docker_app_command()
+{
+	docker exec --user 1000 -i $APP_CONTAINER "$@" || { echo "[Command '$@' Failed!]" ; exit 1 ; }
+}
+
+run_docker_app_command_with_err()
+{
+	docker exec --user 1000 -i $APP_CONTAINER "$@"
+}
