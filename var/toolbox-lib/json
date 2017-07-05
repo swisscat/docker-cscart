@@ -1,0 +1,22 @@
+#!/bin/bash
+
+##
+# Extract json property from JSON.
+#
+# @param property
+##
+json_val()
+{
+	if test -z $1 ; then
+		printf "json_val expects a property." >&2
+		exit 1
+	fi
+
+	prop=$1
+	tokenize | parse | grep -e "^\[\"$prop\"\]" | sed -e "s/\[\"$prop\"\]	\(.*\)/\1/"	-e 's/^"//' -e 's/"$//'
+}
+
+json_simple_keys()
+{
+	tokenize | parse | grep -e '^\["[^,]"\]' | sed -e 's/\[\"\(.*\)\"\]\(.*\)/\1/'
+}

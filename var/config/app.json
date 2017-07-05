@@ -1,0 +1,17 @@
+{
+  "docker": {
+    "driver": "machine"
+  },
+  "app": {
+    "stores": {
+      "1": {
+        "storefront": "ecom-multistore-core.b-i.dev"
+      }
+    }
+  },
+  "db": {
+    "from-app-config": {
+      "file": "/var/www/vhosts/staging.ecom.salesconquest.com/httpdocs/local_conf.php"
+    }
+  }
+}

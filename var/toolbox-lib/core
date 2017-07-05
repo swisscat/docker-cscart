@@ -1,0 +1,137 @@
+#!/bin/bash
+#
+# Application functions
+
+##
+# Display an error message
+#
+# @param message
+#
+# @example errcho "Something went wrong"
+##
+errcho ()
+{
+	printf "$1\n" >&2
+}
+
+##
+# Run a command, display its content only if verbosity flags are setup
+##
+run()
+{
+	if test -n "$DEBUG"; then
+		v=$(exec 2>&1 && set -x && set -- "$@")
+		echo "## Debug: Command: ${v#*--}"
+		"$@"
+	elif test -n "$VERBOSE"; then
+		"$@"
+	else
+		"$@" >/dev/null 2>&1
+	fi
+}
+
+##
+# Similar as run, but display the standard output in all cases
+##
+run_with_std()
+{
+	if test -n "$DEBUG"; then
+		v=$(exec 2>&1 && set -x && set -- "$@")
+		echo "## Debug: Command: ${v#*--}"
+		"$@"
+	elif test -n "$VERBOSE"; then
+		"$@"
+	else
+		"$@" 2>/dev/null
+	fi
+}
+
+##
+# Similar as run, but display the error output in all cases
+##
+run_with_err()
+{
+	if test -n "$DEBUG"; then
+		v=$(exec 2>&1 && set -x && set -- "$@")
+		echo "## Debug: Command: ${v#*--}"
+		"$@"
+	elif test -n "$VERBOSE"; then
+		"$@"
+	else
+		"$@" >/dev/null
+	fi
+}
+
+##
+# Display a line of # characters as the same length of inputted line.
+#
+# @example echo_error "Whoops, something went wrong"
+#
+#     ############################
+#     Whoops, something went wrong
+#
+##
+echo_error ()
+{
+	local LENGTH_INPUT=`echo "$1" | awk 'NR==1{ print length($0) }'`
+	printf %"$LENGTH_INPUT"s |tr " " "#" >&2
+	errcho "\n$1"
+}
+
+##
+# Extract a JSON value from a BASH script
+#
+# @source https://gist.github.com/cjus/1047794
+##
+function jsonval
+{
+    temp=`echo $json | sed 's/\\\\\//\//g' | sed 's/[{}]//g' | awk -v k="text" '{n=split($0,a,","); for (i=1; i<=n; i++) print a[i]}' | sed 's/\"\:\"/\|/g' | sed 's/[\,]/ /g' | sed 's/\"//g' | grep -w $prop`
+    echo ${temp##*|}
+}
+
+check_command()
+{
+	run command -v $1 && echo "$1...ok" || { echo "Command '$1' has not been detected in your system. Please check your setup"; exit 1; }
+}
+
+load_configuration()
+{
+    local configFile="var/config/app.json"
+
+    if ! test -f "$CSCART_DIRECTORY/$configFile" ; then
+        printf >&2 "Configuration '$configFile' not found on CS-Cart repository.\n"
+        exit 1
+    fi
+
+	DOCKER_CSCART_CONFIG=$(cat "$CSCART_DIRECTORY/$configFile")
+
+	(echo $DOCKER_CSCART_CONFIG | json_val docker > /dev/null 2>&1) || { echo "File '$configFile' is not a proper JSON document." ; exit 1; }
+}
+
+check_requirements() {
+	if test -z "$BI_CACHE_COMMAND_PREREQUISITES" ; then
+		echo "Checking component existence..."
+		check_command git
+		check_command docker
+		check_command docker-compose
+		check_command scp
+		check_command ssh
+		check_command perl
+		BI_CACHE_COMMAND_PREREQUISITES=ok
+	fi
+}
+
+# Import SSH Key for git if specified
+load_ssh_key()
+{
+	# Check availability for ssh-add
+	if ! run ssh-add ; then
+		return 0
+	fi
+	if test -n "$BI_STASH_SSH_KEY" ; then
+		run ssh-add $BI_STASH_SSH_KEY
+	else
+		echo_error "Please provide a SSH key for Stash in '$HOME/.biconfig'."
+		exit 1
+	fi
+}

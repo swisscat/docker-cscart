@@ -1,6 +1,9 @@
 {
   "name": "swisscat/docker-cscart",
   "description": "An infrastructure for cs-cart around docker",
+  "scripts": {
+    "post-install-cmd": "cp -r var/config"
+  },
   "extra": {
     "map": [
       [
@@ -12,8 +15,8 @@
         "config"
       ],
       [
-        "var/setup",
-        "var/setup"
+        "var/toolbox.sh",
+        "var/toolbox"
       ]
     ]
   }
