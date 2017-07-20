@@ -1,5 +1,5 @@
 {
-  "name": "swisscat/docker-cscart-local",
+  "name": "swisscat/docker-cscart",
   "description": "An infrastructure for cs-cart around docker",
   "license": "GPL-3.0",
   "require": {
