@@ -7,6 +7,12 @@ Include the package on your dev dependencies:
 composer require swisscat/docker-cscart --dev --ignore-platform-reqs
 ```
 
+Copy the dependencies:
+```
+cp -r vendor/swisscat/docker-cscart/var/* var/
+cp -r vendor/swisscat/docker-cscart/docker-compose.yml docker-compose.yml
+```
+
 Run the environment (docker-compose)
 ```
 var/toolbox env:up   

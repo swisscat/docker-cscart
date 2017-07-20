@@ -169,6 +169,9 @@ do
 	        docker_compose exec php tail /var/log/php-fpm/error.log "$@"
 	        ;;
 
+	    app:setup)
+	        ;;
+
 		build)
 			shift
 			build_repository "$@"
