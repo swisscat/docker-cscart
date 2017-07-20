@@ -2,9 +2,6 @@
   "name": "swisscat/docker-cscart",
   "description": "An infrastructure for cs-cart around docker",
   "license": "GPL-3.0",
-  "require": {
-    "slowprog/composer-copy-file": "~0.2"
-  },
   "scripts": {
     "post-package-install": [
       "SlowProg\\CopyFile\\ScriptHandler::copy"
