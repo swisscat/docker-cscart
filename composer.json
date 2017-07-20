@@ -1,23 +1,13 @@
 {
-  "name": "swisscat/docker-cscart",
+  "name": "swisscat/docker-cscart-local",
   "description": "An infrastructure for cs-cart around docker",
-  "scripts": {
-    "post-install-cmd": "cp -r var/config"
+  "require": {
+    "slowprog/composer-copy-file": "~0.2"
   },
-  "extra": {
-    "map": [
-      [
-        "docker-compose.yml",
-        "docker-compose.yml"
-      ],
-      [
-        "config",
-        "config"
-      ],
-      [
-        "var/toolbox.sh",
-        "var/toolbox"
-      ]
+  "scripts": {
+    "post-package-install": [
+      "SlowProg\\CopyFile\\ScriptHandler::copy"
     ]
-  }
+  },
+  "version": "1.0"
 }
