@@ -8,6 +8,5 @@
     "post-package-install": [
       "SlowProg\\CopyFile\\ScriptHandler::copy"
     ]
-  },
-  "version": "1.0"
+  }
 }
