@@ -6,6 +6,7 @@ MAINTAINER Etienne Favre <etienne.favre@b-i.com>
 ARG PHP_BUILD_APCU_VERSION=5.1.8
 
 RUN pecl install xdebug \
+        apcu-$PHP_BUILD_APCU_VERSION \
     && apt-get update -y \
     && apt-get install -y \
       libxml2-dev \
