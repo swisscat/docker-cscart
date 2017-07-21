@@ -49,7 +49,7 @@ services:
     image: alpine:latest
     volumes:
       - .:/var/www/html
-      - ./config/appdata/startup.sh:/startup.sh
+      - ./var/config/appdata/startup.sh:/startup.sh
     command: /bin/sh /startup.sh
 
   db:
