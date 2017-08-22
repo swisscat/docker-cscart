@@ -7,6 +7,7 @@ ARG PHP_BUILD_APCU_VERSION=5.1.8
 
 RUN pecl install xdebug \
         apcu-$PHP_BUILD_APCU_VERSION \
+        redis \
     && apt-get update -y \
     && apt-get install -y \
       libxml2-dev \
@@ -15,7 +16,7 @@ RUN pecl install xdebug \
       libpng12-dev \
       php-soap \
     && apt-get clean -y \
-    && docker-php-ext-enable xdebug apcu \
+    && docker-php-ext-enable apcu redis \
     && docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ \
     && docker-php-ext-install mysqli pdo_mysql soap gd zip
 
