@@ -1,0 +1,54 @@
+<?php
+
+namespace Swisscat\DockerCsCart\Command;
+
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Input\ArgvInput;
+use Symfony\Component\Console\Output\OutputInterface;
+
+class NewEnvironmentCommandTest extends TestCase
+{
+    public function testErrorMessageOnInvalidDirectory()
+    {
+        $cmd = $this->getMockBuilder(NewEnvironmentCommand::class)
+            ->setMethods(['getCurrentDirectory'])
+            ->getMock();
+
+        $cmd->expects($this->once())
+            ->method('getCurrentDirectory')
+            ->willReturn(__DIR__.'/fixtures/nocscart-dir');
+
+        $output = $this->getMockBuilder(OutputInterface::class)
+            ->getMock();
+
+        $output->expects($this->once())
+            ->method('writeln')
+            ->with([
+                sprintf('<error>Directory %s does not appear to contain a cs-cart installation.</error>', __DIR__.'/fixtures/nocscart-dir'),
+                '<error>Please execute this command from a cs-cart root folder</error>'
+            ])
+        ;
+
+        $cmd->execute(new ArgvInput(), $output);
+    }
+
+    public function testErrorMessageOnValidDirectory()
+    {
+        $cmd = $this->getMockBuilder(NewEnvironmentCommand::class)
+            ->setMethods(['getCurrentDirectory'])
+            ->getMock();
+
+        $cmd->expects($this->once())
+            ->method('getCurrentDirectory')
+            ->willReturn(__DIR__.'/fixtures/cscart-dir');
+
+        $output = $this->getMockBuilder(OutputInterface::class)
+            ->getMock();
+
+        $output->expects($this->once())
+            ->method('writeln')
+            ->with(sprintf('<info>Directory %s setup successfully.</info>', __DIR__.'/fixtures/cscart-dir'));
+
+        $cmd->execute(new ArgvInput(), $output);
+    }
+}

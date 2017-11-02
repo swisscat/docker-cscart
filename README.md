@@ -1,21 +1,19 @@
 # docker-cscart
-This package allows you to spin up a docker-based environment for cs-cart.
+An utility to create CS-Cart environments using docker
 
 ## Installation
-Include the package on your dev dependencies:
+Install the package globally:
 ```
-composer require swisscat/docker-cscart --dev --ignore-platform-reqs
-```
-
-Copy the dependencies:
-```
-cp -r vendor/swisscat/docker-cscart/var/* var/
-cp -r vendor/swisscat/docker-cscart/docker-compose.yml docker-compose.yml
+composer require --global swisscat/docker-cscart
 ```
 
-Run the environment (docker-compose)
+Ensure `$PATH` contains the `~/.composer/vendor/bin` directory
+
+# Setup a new environment
+Head to a cs-cart repository and type
 ```
-var/toolbox env:up   
+docker-cscart new
+docker-compose up -d
 ```
 
 ## Configuration

@@ -1,10 +1,26 @@
 {
   "name": "swisscat/docker-cscart",
-  "description": "An infrastructure for cs-cart around docker",
+  "description": "An utility to create CS-Cart environments using docker",
+  "keywords": [ "docker", "cs-cart", "cscart" ],
+  "homepage": "https://github.com/swisscat/docker-cscart",
+  "authors": [
+    {
+      "name": "Etienne Favre",
+      "email": "swisscatman@gmail.com"
+    }
+  ],
   "license": "GPL-3.0",
-  "scripts": {
-    "post-package-install": [
-      "SlowProg\\CopyFile\\ScriptHandler::copy"
-    ]
+  "require": {
+    "php": ">=7.1",
+    "symfony/console": "^3.3.10"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "*"
+  },
+  "autoload": {
+    "psr-4": { "Swisscat\\DockerCsCart\\": "src/" }
+  },
+  "autoload-dev": {
+    "psr-4": { "Swisscat\\DockerCsCart\\Test\\": "tests/" }
   }
 }
