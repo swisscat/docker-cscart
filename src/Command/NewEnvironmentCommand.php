@@ -2,6 +2,10 @@
 
 namespace Swisscat\DockerCsCart\Command;
 
+use InvalidArgumentException;
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use Swisscat\DockerCsCart\Application;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -44,8 +48,25 @@ class NewEnvironmentCommand extends Command
         $output->writeln(sprintf('<info>Directory %s setup successfully.</info>', $currentDirectory));
     }
 
-    protected function copy(string $from, string $to): bool
+    protected function copy(string $from, string $to, array $params = [])
     {
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
+
+        foreach ($iterator as $file) {
+            /** @var \SplFileInfo $file */
+            $filePath = $file->getPathname();
+
+            $pos = strpos($filePath, $from);
+
+            $destPath = substr_replace($filePath, $to, $pos, strlen($from));
+
+            if ($file->isDir()) {
+                mkdir($destPath);
+            } else {
+                copy($filePath, $destPath);
+            }
+        }
+
         return true;
     }
 
