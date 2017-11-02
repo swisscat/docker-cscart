@@ -4,7 +4,7 @@ An utility to create CS-Cart environments using docker
 ## Installation
 Install the package globally:
 ```
-composer require --global swisscat/docker-cscart
+composer global require swisscat/docker-cscart
 ```
 
 Ensure `$PATH` contains the `~/.composer/vendor/bin` directory

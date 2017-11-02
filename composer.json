@@ -12,7 +12,7 @@
   "license": "GPL-3.0",
   "require": {
     "php": ">=7.1",
-    "symfony/console": "^3.3.10"
+    "symfony/console": "^3.3"
   },
   "require-dev": {
     "phpunit/phpunit": "*"
