@@ -43,7 +43,7 @@ class NewEnvironmentCommand extends Command
             return 10;
         }
 
-        $this->copy(Application::getResourcesDirectory(), $currentDirectory);
+        $this->copy(Application::getResourcesDirectory(), $currentDirectory,['overwrite' => $input->hasOption('overwrite')]);
 
         $output->writeln(sprintf('<info>Directory %s setup successfully.</info>', $currentDirectory));
     }
@@ -51,6 +51,8 @@ class NewEnvironmentCommand extends Command
     protected function copy(string $from, string $to, array $params = [])
     {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
+
+        $overwrite = $params['overwrite'] ?? false;
 
         foreach ($iterator as $file) {
             /** @var \SplFileInfo $file */
@@ -61,9 +63,16 @@ class NewEnvironmentCommand extends Command
             $destPath = substr_replace($filePath, $to, $pos, strlen($from));
 
             if ($file->isDir()) {
-                mkdir($destPath);
+                if (!file_exists($destPath)) {
+                    mkdir($destPath);
+                }
             } else {
-                copy($filePath, $destPath);
+                if (file_exists($destPath) && $overwrite) {
+                    unlink($destPath);
+                    copy($filePath, $destPath);
+                } else {
+                    copy($filePath, $destPath);
+                }
             }
         }
 
