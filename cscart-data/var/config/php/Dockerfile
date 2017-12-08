@@ -30,4 +30,11 @@ RUN mkdir /var/log/php-fpm && \
     touch /var/log/php-fpm/error.log && \
     chown -R www-data:www-data /var/log/php-fpm
 
+RUN apt-get -y install gcc make autoconf libc-dev pkg-config \
+   && apt-get -y install libssh2-1-dev \
+   && pecl install ssh2-alpha
+
+RUN docker-php-ext-enable ssh2
+RUN docker-php-ext-enable xdebug
+
 ENV PHP_INI_SCAN_DIR=:/usr/local/etc/php/conf.d/custom.d
