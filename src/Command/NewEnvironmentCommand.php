@@ -2,7 +2,6 @@
 
 namespace Swisscat\DockerCsCart\Command;
 
-use InvalidArgumentException;
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -25,10 +24,16 @@ class NewEnvironmentCommand extends Command
                 InputOption::VALUE_NONE,
                 'Override current installation if existing found'
             )
+            ->addOption('vhost',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'The vhost to use')
             ;
 
         parent::configure();
     }
+
+    const DefaultVhostTemplate = 'cscart-%s.local';
 
     public function execute(InputInterface $input, OutputInterface $output)
     {
@@ -43,7 +48,18 @@ class NewEnvironmentCommand extends Command
             return 10;
         }
 
-        $this->copy(Application::getResourcesDirectory(), $currentDirectory,['overwrite' => $input->hasOption('overwrite')]);
+        $overwrite = $input->getOption('overwrite');
+
+        if (!$overwrite && file_exists($currentDirectory.'/docker-compose.yml')) {
+            $output->writeln([
+                sprintf('<error>A docker configuration has already been found.</error>', $currentDirectory),
+                '<error>Please specify the overwrite option to replace the existing one.</error>'
+            ]);
+
+            return 10;
+        }
+
+        $this->copy(Application::getResourcesDirectory(), $currentDirectory,['vhost' => $vhost = $input->getOption('vhost') ?: sprintf(self::DefaultVhostTemplate, substr(md5($currentDirectory),0,3)),'overwrite' => $input->hasOption('overwrite')]);
 
         $output->writeln(sprintf('<info>Directory %s setup successfully.</info>', $currentDirectory));
     }
@@ -69,10 +85,14 @@ class NewEnvironmentCommand extends Command
             } else {
                 if (file_exists($destPath) && $overwrite) {
                     unlink($destPath);
-                    copy($filePath, $destPath);
-                } else {
-                    copy($filePath, $destPath);
                 }
+
+                copy($filePath, $destPath);
+            }
+
+            switch ($file->getFilename()) {
+                case 'docker-compose.yml':
+                    file_put_contents($destPath, str_replace('<vhost>', $params['vhost'], file_get_contents($destPath)));
             }
         }
 

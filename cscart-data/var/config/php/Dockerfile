@@ -14,7 +14,6 @@ RUN pecl install xdebug \
       libfreetype6-dev \
       libjpeg62-turbo-dev \
       libpng12-dev \
-      php-soap \
     && apt-get clean -y \
     && docker-php-ext-enable apcu redis \
     && docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ \

@@ -10,6 +10,7 @@ composer global require swisscat/docker-cscart
 Ensure `$PATH` contains the `~/.composer/vendor/bin` directory
 
 # Setup a new environment
+The setup relies on an NGINX proxy. Please ensure that https://github.com/swisscat/nginx-proxy is enabled.
 Head to a cs-cart repository and type
 ```
 docker-cscart new
